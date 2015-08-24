@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
@@ -58,7 +59,7 @@ var (
 	// Error used to indicate that a sync is deferred because the controller isn't ready yet
 	errDeferredSync = fmt.Errorf("deferring sync till endpoints controller has synced")
 
-	config = flags.String("cfg", "loadbalancer.json", `path to load balancer json config.
+	config = flags.String("cfg", "loadbalancer_f5.json", `path to load balancer json config.
 		Note that this is *not* the path to the configuration file for the load balancer
 		itself, but rather, the path to the json configuration of how you would like the
 		load balancer to behave in the kubernetes cluster.`)
@@ -183,14 +184,35 @@ type loadBalancerController struct {
 	client            *unversioned.Client
 	epController      *framework.Controller
 	svcController     *framework.Controller
+	nodeController    *framework.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
+	nodeLister        cache.StoreToNodeLister
 	reloadRateLimiter util.RateLimiter
 	template          string
 	targetService     string
 	forwardServices   bool
 	tcpServices       map[string]int
 	httpPort          int
+	nodes             map[string]int
+}
+
+// getNodes retuns a list of nodes
+func getNodes(client *client.Client) (nodes []string, err error) {
+
+	nodeList, err := client.Nodes().List(labels.Everything(), fields.Everything())
+	if err != nil {
+		return
+	}
+	for _, node := range nodeList.Items {
+		for _, addresses := range node.Status.Addresses {
+			nodes = append(nodes, addresses.Address)
+		}
+	}
+
+	fmt.Println("!!!!!!!!!!!!!!!!!!!! nodes: ", nodes)
+
+	return
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -236,11 +258,6 @@ func getServiceNameForLBRule(s *api.Service, servicePort int) string {
 		return s.Name
 	}
 	return fmt.Sprintf("%v:%v", s.Name, servicePort)
-}
-
-// getNodes returns a list of currently active nodes in the cluster
-func (lbc *loadBalancerController) getNodes() {
-
 }
 
 // getServices returns a list of services and their endpoints.
@@ -295,6 +312,9 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
+
+	//nodes = lbc.getNodes()
+
 	httpSvc, tcpSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
@@ -357,6 +377,9 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 	}
 	enqueue := func(obj interface{}) {
 		key, err := keyFunc(obj)
+
+		fmt.Println("obj:", obj)
+
 		if err != nil {
 			glog.Infof("Couldn't get key for object %+v: %v", obj, err)
 			return
@@ -489,8 +512,10 @@ func main() {
 
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
+	getNodes(kubeClient)
 	go lbc.epController.Run(util.NeverStop)
 	go lbc.svcController.Run(util.NeverStop)
+	go lbc.nodeController.Run(util.NeverStop)
 	if *dry {
 		dryRun(lbc)
 	} else {
