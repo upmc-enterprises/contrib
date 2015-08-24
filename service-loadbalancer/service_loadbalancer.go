@@ -69,6 +69,8 @@ var (
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
 		cluster for creating the client`)
 
+	lbType = flags.String("lb-type", "f5", `configures which load balancer type to use`)
+
 	// If you have pure tcp services or https services that need L3 routing, you
 	// must specify them by name. Note that you are responsible for:
 	// 1. Making sure there is no collision between the service ports of these services.
@@ -101,7 +103,7 @@ var (
 	// backend svc_p1: pod1:tp1, pod2:tp1
 	// backend svc_p2: pod1:tp2, pod2:tp2
 
-	forwardServices = flags.Bool("forward-services", false, `Forward to service vip
+	forwardServices = flags.Bool("forward-services", true, `Forward to service vip
 		instead of endpoints. This will use kube-proxy's inbuilt load balancing.`)
 
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
@@ -140,6 +142,7 @@ type loadBalancerConfig struct {
 // write writes the configuration file, will write to stdout if dryRun == true
 func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool) (err error) {
 	var w io.Writer
+
 	if dryRun {
 		w = os.Stdout
 	} else {
@@ -233,6 +236,11 @@ func getServiceNameForLBRule(s *api.Service, servicePort int) string {
 		return s.Name
 	}
 	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+}
+
+// getNodes returns a list of currently active nodes in the cluster
+func (lbc *loadBalancerController) getNodes() {
+
 }
 
 // getServices returns a list of services and their endpoints.
@@ -355,11 +363,19 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		}
 		lbc.queue.Add(key)
 	}
+
 	eventHandlers := framework.ResourceEventHandlerFuncs{
-		AddFunc:    enqueue,
-		DeleteFunc: enqueue,
+		AddFunc: func(cur interface{}) {
+			fmt.Println("-----------> got an add!", cur)
+			enqueue(cur)
+		},
+		DeleteFunc: func(cur interface{}) {
+			fmt.Println("-----------> got a delete!", cur)
+			enqueue(cur)
+		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
+				fmt.Println("-----------> got an update!", cur)
 				enqueue(cur)
 			}
 		},
