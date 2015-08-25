@@ -210,8 +210,6 @@ func getNodes(client *client.Client) (nodes []string, err error) {
 		}
 	}
 
-	fmt.Println("!!!!!!!!!!!!!!!!!!!! nodes: ", nodes)
-
 	return
 }
 
@@ -265,44 +263,82 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 	ep := []string{}
 	services, _ := lbc.svcLister.List()
 	for _, s := range services.Items {
-		if s.Spec.Type == api.ServiceTypeLoadBalancer {
-			glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
-			continue
-		}
-		for _, servicePort := range s.Spec.Ports {
-			// TODO: headless services?
-			sName := s.Name
-			if servicePort.Protocol == api.ProtocolUDP ||
-				(lbc.targetService != "" && lbc.targetService != sName) {
-				glog.Infof("Ignoring %v: %+v", sName, servicePort)
+
+		switch *lbType {
+		case "f5":
+			if s.Spec.Type != api.ServiceTypeLoadBalancer {
+				glog.Infof("Ignoring service %v, it is not a load balancer type", s.Name)
 				continue
 			}
 
-			if lbc.forwardServices {
-				ep = []string{
-					fmt.Sprintf("%v:%v", s.Spec.ClusterIP, servicePort.Port)}
-			} else {
-				ep = lbc.getEndpoints(&s, &servicePort)
-			}
-			if len(ep) == 0 {
-				glog.Infof("No endpoints found for service %v, port %+v",
-					sName, servicePort)
-				continue
-			}
-			newSvc := service{
-				Name: getServiceNameForLBRule(&s, servicePort.Port),
-				Ep:   ep,
-			}
-			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
-				newSvc.FrontendPort = servicePort.Port
-				tcpSvc = append(tcpSvc, newSvc)
-			} else {
-				newSvc.FrontendPort = lbc.httpPort
+			for _, servicePort := range s.Spec.Ports {
+				// TODO: headless services?
+				sName := s.Name
+				if servicePort.Protocol == api.ProtocolUDP {
+					glog.Infof("Ignoring %v: %+v", sName, servicePort)
+					continue
+				}
+
+				ep = []string{fmt.Sprintf("%v", servicePort.Port)}
+
+				newSvc := service{
+					Name:         getServiceNameForLBRule(&s, servicePort.Port),
+					FrontendPort: servicePort.NodePort,
+					Ep:           ep,
+				}
+
 				httpSvc = append(httpSvc, newSvc)
 			}
-			glog.Infof("Found service: %+v", newSvc)
+
+		default:
+			if s.Spec.Type == api.ServiceTypeLoadBalancer {
+				glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
+				continue
+			}
+
+			for _, servicePort := range s.Spec.Ports {
+				// TODO: headless services?
+				sName := s.Name
+
+				if servicePort.Protocol == api.ProtocolUDP ||
+					(lbc.targetService != "" && lbc.targetService != sName) {
+					glog.Infof("Ignoring %v: %+v", sName, servicePort)
+					continue
+				}
+
+				if lbc.forwardServices {
+					ep = []string{
+						fmt.Sprintf("%v:%v", s.Spec.ClusterIP, servicePort.Port)}
+				} else {
+					ep = lbc.getEndpoints(&s, &servicePort)
+				}
+				if len(ep) == 0 {
+					glog.Infof("No endpoints found for service %v, port %+v",
+						sName, servicePort)
+					continue
+				}
+				newSvc := service{
+					Name: getServiceNameForLBRule(&s, servicePort.Port),
+					Ep:   ep,
+				}
+				if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
+					newSvc.FrontendPort = servicePort.Port
+					tcpSvc = append(tcpSvc, newSvc)
+				} else {
+					newSvc.FrontendPort = lbc.httpPort
+					httpSvc = append(httpSvc, newSvc)
+				}
+				glog.Infof("Found service: %+v", newSvc)
+			}
+
 		}
 	}
+
+	for _, svc := range httpSvc {
+		fmt.Println("got the following httpService:", svc.FrontendPort, svc.Ep)
+	}
+	fmt.Println("got the following tcpServices:", tcpSvc)
+
 	return
 }
 
