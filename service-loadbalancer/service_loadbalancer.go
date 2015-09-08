@@ -429,7 +429,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 			enqueue(cur)
 		},
 		DeleteFunc: func(cur interface{}) {
-			fmt.Println("-----------> got a delete!", cur)
+			fmt.Println("-----------> got a delete!", cur
 			enqueue(cur)
 		},
 		UpdateFunc: func(old, cur interface{}) {
