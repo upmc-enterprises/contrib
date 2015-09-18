@@ -198,7 +198,7 @@ type loadBalancerController struct {
 }
 
 // getNodes retuns a list of nodes
-func getNodes(client *client.Client) (nodes []string, err error) {
+func getNodes(client *unversioned.Client) (nodes []string, err error) {
 
 	nodeList, err := client.Nodes().List(labels.Everything(), fields.Everything())
 	if err != nil {
@@ -429,7 +429,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 			enqueue(cur)
 		},
 		DeleteFunc: func(cur interface{}) {
-			fmt.Println("-----------> got a delete!", cur
+			fmt.Println("-----------> got a delete!", cur)
 			enqueue(cur)
 		},
 		UpdateFunc: func(old, cur interface{}) {
