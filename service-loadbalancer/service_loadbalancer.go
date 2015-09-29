@@ -17,6 +17,8 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,6 +73,12 @@ var (
 		cluster for creating the client`)
 
 	lbType = flags.String("lb-type", "f5", `configures which load balancer type to use`)
+
+	infobloxAPIUser = flags.String("infoblox-api-user", "", `set the user to use when querying infoblox`)
+
+	infobloxAPIPassword = flags.String("infoblox-api-password", "", `set the password to use when querying infoblox`)
+
+	infobloxAPIBaseURL = flags.String("infoblox-api-base-url", "", `base url to access infoblox api`)
 
 	// If you have pure tcp services or https services that need L3 routing, you
 	// must specify them by name. Note that you are responsible for:
@@ -184,7 +192,6 @@ type loadBalancerController struct {
 	client            *unversioned.Client
 	epController      *framework.Controller
 	svcController     *framework.Controller
-	nodeController    *framework.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
 	nodeLister        cache.StoreToNodeLister
@@ -195,6 +202,27 @@ type loadBalancerController struct {
 	tcpServices       map[string]int
 	httpPort          int
 	nodes             map[string]int
+	ibc               *infobloxController
+}
+
+// store infoblox api data and allow for actions against api
+type infobloxController struct {
+	user         string
+	password     string
+	baseEndpoint string
+}
+
+type infoBloxHost struct {
+	Ref string `json:"_ref"`
+}
+
+type infoBloxHostCreate struct {
+	Name string        `json:"name"`
+	Ips  []infoBloxIps `json:"ipv4addrs,array"`
+}
+
+type infoBloxIps struct {
+	Address string `json:"ipv4addr"`
 }
 
 // getNodes retuns a list of nodes
@@ -210,6 +238,107 @@ func getNodes(client *unversioned.Client) (nodes []string, err error) {
 		}
 	}
 
+	return
+}
+
+// get current dns entry
+func (infoblx *infobloxController) getHost(name string) (host []infoBloxHost, err error) {
+	client, req := getHTTPClientRequest(infoblx.password, fmt.Sprintf("%s/record:host?name~=%s.enterprises.upmc.edu", infoblx.baseEndpoint, name), "GET", nil)
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return
+	}
+
+	// read the body response
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	body := string(bodyBytes)
+
+	// parse body to object
+	host, err = infoblx.parseHost(body)
+
+	return
+}
+
+// delete dns entry in infoblox
+func (infoblx *infobloxController) deleteHost(name string) {
+	fmt.Println("----------> host to delete:", name)
+
+	// get all hosts
+	hosts, _ := infoblx.getHost(name)
+
+	for _, host := range hosts {
+		client, req := getHTTPClientRequest(infoblx.password, fmt.Sprintf("%s/%s", infoblx.baseEndpoint, host.Ref), "DELETE", nil)
+		client.Do(req)
+	}
+}
+
+// create dns entry in infoblox
+func (infoblx *infobloxController) createHost(name, ip string, nodes []string) {
+	//first check if it already exists, if so, don't create again
+	hosts, _ := infoblx.getHost(name)
+
+	if len(hosts) > 0 {
+		return
+	}
+
+	// get list of all nodes's ips
+	ips := []infoBloxIps{}
+	for _, ip := range nodes {
+		ips = append(ips, infoBloxIps{Address: ip})
+	}
+
+	// create the object to post in body
+	bodyObj := infoBloxHostCreate{
+		Name: fmt.Sprintf("%s.enterprises.upmc.edu", name),
+		Ips:  ips,
+	}
+
+	s, _ := json.Marshal(bodyObj)
+	body := bytes.NewBuffer(s)
+
+	client, req := getHTTPClientRequest(infoblx.password, fmt.Sprintf("%s/record:host", infoblx.baseEndpoint), "POST", body)
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// parse body to infoBloxHost object
+func (infoblx *infobloxController) parseHost(jsonString string) (hosts []infoBloxHost, err error) {
+	var ifbxArray []infoBloxHost
+	dec := json.NewDecoder(strings.NewReader(jsonString))
+	err = dec.Decode(&ifbxArray)
+
+	if err != nil {
+		return
+	}
+
+	// if returned the single dns entry, if got more than one, return nothing
+	if len(ifbxArray) > 0 {
+		hosts = ifbxArray
+	}
+
+	return
+}
+
+// generates a httpClient & httpRequest
+func getHTTPClientRequest(password, url, httpRequestType string, httpBody io.Reader) (client *http.Client, request *http.Request) {
+	// !!!!!!!! RUH_RHRO !!!!!!!!!!!!!!!
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client = &http.Client{Transport: tr}
+	request, _ = http.NewRequest(httpRequestType, url, httpBody)
+	request.Header.Add("Authorization", fmt.Sprintf("Basic %s", password)) //TODO
 	return
 }
 
@@ -288,6 +417,12 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				}
 
 				httpSvc = append(httpSvc, newSvc)
+
+				// Create DNS in Infoblox
+				// nodes, _ := getNodes(lbc.client)
+				//
+				// fmt.Println("got a create for:", newSvc.Name)
+				// lbc.ibc.createHost(newSvc.Name, "", nodes)
 			}
 
 		default:
@@ -383,8 +518,18 @@ func (lbc *loadBalancerController) worker() {
 	}
 }
 
+// newInfobloxController creates a new infoBloxController from the given config
+func newInfobloxController(user, password, baseURL string) *infobloxController {
+	ibc := infobloxController{
+		user:         *infobloxAPIUser,
+		password:     *infobloxAPIPassword,
+		baseEndpoint: *infobloxAPIBaseURL,
+	}
+	return &ibc
+}
+
 // newLoadBalancerController creates a new controller from the given config.
-func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string) *loadBalancerController {
+func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string, ibc *infobloxController) *loadBalancerController {
 
 	lbc := loadBalancerController{
 		cfg:    cfg,
@@ -396,6 +541,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		forwardServices: *forwardServices,
 		httpPort:        *httpPort,
 		tcpServices:     map[string]int{},
+		ibc:             ibc,
 	}
 
 	for _, service := range strings.Split(*tcpServices, ",") {
@@ -423,19 +569,75 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		lbc.queue.Add(key)
 	}
 
-	eventHandlers := framework.ResourceEventHandlerFuncs{
+	endpointEventHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(cur interface{}) {
-			fmt.Println("-----------> got an add!", cur)
+			// if e, ok := cur.(*api.Endpoints); ok {
+			//
+			// 	// Create DNS in Infoblox
+			// 	nodes, _ := getNodes(lbc.client)
+			//
+			// 	fmt.Println("got a create for:", e.Name)
+			// 	lbc.ibc.createHost(e.Name, "", nodes)
+			// }
+
 			enqueue(cur)
 		},
 		DeleteFunc: func(cur interface{}) {
-			fmt.Println("-----------> got a delete!", cur)
-			enqueue(cur)
+			if *lbType != "f5" {
+				enqueue(cur)
+			} else {
+				if e, ok := cur.(*api.Endpoints); ok {
+					fmt.Println("endpoint name:", e.Name)
+					lbc.ibc.deleteHost(e.Name)
+				} else if e, ok := cur.(*cache.DeletedFinalStateUnknown); ok {
+					fmt.Println("service delete from cached object!", e.Key)
+					lbc.ibc.deleteHost(e.Key)
+				}
+			}
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			if !reflect.DeepEqual(old, cur) {
-				fmt.Println("-----------> got an update!", cur)
+			if *lbType != "f5" {
+				if !reflect.DeepEqual(old, cur) {
+					enqueue(cur)
+				}
+			}
+		},
+	}
+
+	serviceEventHandlers := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(cur interface{}) {
+			if *lbType != "f5" {
 				enqueue(cur)
+			} else {
+				if e, ok := cur.(*api.Service); ok {
+					if e.Spec.Type == api.ServiceTypeLoadBalancer {
+
+						nodes, _ := getNodes(lbc.client)
+
+						fmt.Println("got a create for:", e.Name)
+						lbc.ibc.createHost(e.Name, "", nodes)
+					}
+				}
+			}
+		},
+		DeleteFunc: func(cur interface{}) {
+			if *lbType != "f5" {
+				enqueue(cur)
+			} else {
+				if e, ok := cur.(*api.Service); ok {
+					fmt.Println("service name:", e.Name)
+					lbc.ibc.deleteHost(e.Name)
+				} else if e, ok := cur.(cache.DeletedFinalStateUnknown); ok {
+					fmt.Println("service delete from cached object!", strings.Split(e.Key, "/")[1])
+					lbc.ibc.deleteHost(strings.Split(e.Key, "/")[1])
+				}
+			}
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			if *lbType != "f5" {
+				if !reflect.DeepEqual(old, cur) {
+					enqueue(cur)
+				}
 			}
 		},
 	}
@@ -443,12 +645,12 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 	lbc.svcLister.Store, lbc.svcController = framework.NewInformer(
 		cache.NewListWatchFromClient(
 			lbc.client, "services", namespace, fields.Everything()),
-		&api.Service{}, resyncPeriod, eventHandlers)
+		&api.Service{}, resyncPeriod, serviceEventHandlers)
 
 	lbc.epLister.Store, lbc.epController = framework.NewInformer(
 		cache.NewListWatchFromClient(
 			lbc.client, "endpoints", namespace, fields.Everything()),
-		&api.Endpoints{}, resyncPeriod, eventHandlers)
+		&api.Endpoints{}, resyncPeriod, endpointEventHandlers)
 
 	return &lbc
 }
@@ -546,12 +748,22 @@ func main() {
 		namespace = "default"
 	}
 
+	// setup infoblox
+	ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL)
+
+	// !!!!!!!!!! TESTING!
+	//nodes, _ := getNodes(kubeClient)
+	//ibc.createHost("stevesloka", "1.2.3.4", nodes)
+	// host, _ := ibc.getHost("stevesloka")
+	//ibc.deleteHost("cdris-op-ui-dev")
+
 	// TODO: Handle multiple namespaces
-	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
-	getNodes(kubeClient)
-	go lbc.epController.Run(util.NeverStop)
+	lbc := newLoadBalancerController(cfg, kubeClient, namespace, ibc)
+
+	if *lbType != "f5" {
+		go lbc.epController.Run(util.NeverStop)
+	}
 	go lbc.svcController.Run(util.NeverStop)
-	go lbc.nodeController.Run(util.NeverStop)
 	if *dry {
 		dryRun(lbc)
 	} else {
