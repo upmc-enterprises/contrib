@@ -18,7 +18,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -50,7 +49,7 @@ func setupMockService(testType string) *httptest.Server {
 	}))
 }
 
-func TestNewObject(t *testing.T) {
+func Test_getHost_NewObject(t *testing.T) {
 	ibc := newInfobloxController(user, password, url)
 
 	if ibc.user != user {
@@ -66,13 +65,11 @@ func TestNewObject(t *testing.T) {
 	}
 }
 
-func TestGetHostParseData(t *testing.T) {
+func Test_getHost_ParseData(t *testing.T) {
 	ms := setupMockService("good")
 	defer ms.Close()
 
 	ibc := newInfobloxController(user, password, ms.URL)
-
-	fmt.Println("server.url: ", ms.URL)
 
 	host, err := ibc.getHost("foo")
 
@@ -85,14 +82,11 @@ func TestGetHostParseData(t *testing.T) {
 	}
 }
 
-func TestGetHost_ServerError(t *testing.T) {
+func Test_getHost_ServerError(t *testing.T) {
 	ms := setupMockService("500")
 	defer ms.Close()
 
 	ibc := newInfobloxController(user, password, ms.URL)
-
-	fmt.Println("server.url: ", ms.URL)
-
 	host, err := ibc.getHost("foo")
 
 	if err != nil {
@@ -104,18 +98,45 @@ func TestGetHost_ServerError(t *testing.T) {
 	}
 }
 
-func TestGetHost_BadModel(t *testing.T) {
+func Test_getHost_BadModel(t *testing.T) {
+	ms := setupMockService("badmodel")
+	defer ms.Close()
+
+	ibc := newInfobloxController(user, password, ms.URL)
+	_, err := ibc.getHost("foo")
+
+	if err == nil {
+		t.Error("Expected 'err' not to be nil!")
+	}
+}
+
+func Test_deleteHost_Valid(t *testing.T) {
+	ms := setupMockService("good")
+	defer ms.Close()
+
+	ibc := newInfobloxController(user, password, ms.URL)
+
+	hosts, err := ibc.deleteHost("foo")
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if hosts != 2 {
+		t.Fatalf("Expected: %+v, got %+v", "2 host", hosts)
+	}
+}
+
+func Test_deleteHost_BadRequest(t *testing.T) {
 	ms := setupMockService("badmodel")
 	defer ms.Close()
 
 	ibc := newInfobloxController(user, password, ms.URL)
 
-	fmt.Println("server.url: ", ms.URL)
+	hosts, err := ibc.deleteHost("foo")
 
-	_, err := ibc.getHost("foo")
-
-	if err == nil {
-		t.Error("Expected 'err' not to be nil!")
+	if err == nil || hosts != 0 {
+		t.Fatalf("Expected 'err' to be something and wasn't or num hosts to be zero.")
 	}
 }
 

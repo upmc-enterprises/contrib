@@ -93,16 +93,20 @@ func (infoblx *infobloxController) getHost(name string) (host []infoBloxHost, er
 }
 
 // delete dns entry in infoblox
-func (infoblx *infobloxController) deleteHost(name string) {
-	fmt.Println("----------> host to delete:", name)
-
+func (infoblx *infobloxController) deleteHost(name string) (int, error) {
 	// get all hosts
-	hosts, _ := infoblx.getHost(name)
+	hosts, err := infoblx.getHost(name)
+
+	if err != nil {
+		return 0, err
+	}
 
 	for _, host := range hosts {
 		client, req := getHTTPClientRequest(infoblx.password, fmt.Sprintf("%s/%s", infoblx.baseEndpoint, host.Ref), "DELETE", nil)
 		client.Do(req)
 	}
+
+	return len(hosts), nil
 }
 
 // create dns entry in infoblox
