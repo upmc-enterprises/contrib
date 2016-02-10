@@ -110,12 +110,14 @@ func (infoblx *infobloxController) deleteHost(name string) (int, error) {
 }
 
 // create dns entry in infoblox
-func (infoblx *infobloxController) createHost(name, ip string, nodes []string) {
+func (infoblx *infobloxController) createHost(name, ip string, nodes []string) (int, error) {
 	//first check if it already exists, if so, don't create again
 	hosts, _ := infoblx.getHost(name)
 
+	fmt.Println("got hosts: ", hosts)
+
 	if len(hosts) > 0 {
-		return
+		return 0, nil
 	}
 
 	// get list of all nodes's ips
@@ -137,9 +139,11 @@ func (infoblx *infobloxController) createHost(name, ip string, nodes []string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return
+		return 0, err
 	}
 	defer resp.Body.Close()
+
+	return 1, nil
 }
 
 // parse body to infoBloxHost object

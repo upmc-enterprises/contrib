@@ -39,6 +39,12 @@ func setupMockService(testType string) *httptest.Server {
 
 			w.Header().Add("Content-Type", "application/json")
 			w.Write(data)
+		case "nodata":
+			var hosts []infoBloxHost
+			data, _ := json.Marshal(hosts)
+
+			w.Header().Add("Content-Type", "application/json")
+			w.Write(data)
 		case "500":
 			w.WriteHeader(http.StatusInternalServerError)
 		case "badmodel":
@@ -137,6 +143,32 @@ func Test_deleteHost_BadRequest(t *testing.T) {
 
 	if err == nil || hosts != 0 {
 		t.Fatalf("Expected 'err' to be something and wasn't or num hosts to be zero.")
+	}
+}
+
+func Test_createHost_Good(t *testing.T) {
+	ms := setupMockService("nodata")
+	defer ms.Close()
+
+	ibc := newInfobloxController(user, password, ms.URL)
+
+	hosts, _ := ibc.createHost("foo", "1.2.3.4", []string{"node1", "node2"})
+
+	if hosts != 1 {
+		t.Fatalf("Expected: %+v, got %+v", "1 host", hosts)
+	}
+}
+
+func Test_createHost_NoHosts(t *testing.T) {
+	ms := setupMockService("good")
+	defer ms.Close()
+
+	ibc := newInfobloxController(user, password, ms.URL)
+
+	hosts, _ := ibc.createHost("foo", "1.2.3.4", []string{"node1", "node2"})
+
+	if hosts != 0 {
+		t.Fatalf("Expected: %+v, got %+v", "0 host", hosts)
 	}
 }
 
