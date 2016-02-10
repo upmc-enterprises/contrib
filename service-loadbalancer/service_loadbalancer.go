@@ -136,6 +136,12 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+	infobloxAPIUser = flags.String("infoblox-api-user", "", `set the user to use when querying infoblox`)
+
+	infobloxAPIPassword = flags.String("infoblox-api-password", "", `set the password to use when querying infoblox`)
+
+	infobloxAPIBaseURL = flags.String("infoblox-api-base-url", "", `base url to access infoblox api`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
