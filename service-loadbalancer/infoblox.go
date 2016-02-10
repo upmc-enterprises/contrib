@@ -79,14 +79,16 @@ func (infoblx *infobloxController) getHost(name string) (host []infoBloxHost, er
 
 	// read the body response
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	//TODO: Check error
-	body := string(bodyBytes)
 
-	fmt.Println("got data!: ", body)
+	if err != nil {
+		return
+	}
+
+	body := string(bodyBytes)
 
 	// parse body to object
 	host, err = infoblx.parseHost(body)
-	// TODO: Check err
+
 	return
 }
 
