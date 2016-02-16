@@ -56,7 +56,7 @@ func setupMockService(testType string) *httptest.Server {
 }
 
 func Test_getHost_NewObject(t *testing.T) {
-	ibc := newInfobloxController(user, password, url)
+	ibc := newInfobloxController(user, password, url, "", "")
 
 	if ibc.user != user {
 		t.Fatalf("Expected Username: %+v, got %+v", user, ibc.user)
@@ -75,7 +75,7 @@ func Test_getHost_ParseData(t *testing.T) {
 	ms := setupMockService("good")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 
 	host, err := ibc.getHost("foo")
 
@@ -92,7 +92,7 @@ func Test_getHost_ServerError(t *testing.T) {
 	ms := setupMockService("500")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 	host, err := ibc.getHost("foo")
 
 	if err != nil {
@@ -108,7 +108,7 @@ func Test_getHost_BadModel(t *testing.T) {
 	ms := setupMockService("badmodel")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 	_, err := ibc.getHost("foo")
 
 	if err == nil {
@@ -120,7 +120,7 @@ func Test_deleteHost_Valid(t *testing.T) {
 	ms := setupMockService("good")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 
 	hosts, err := ibc.deleteHost("foo")
 
@@ -137,7 +137,7 @@ func Test_deleteHost_BadRequest(t *testing.T) {
 	ms := setupMockService("badmodel")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 
 	hosts, err := ibc.deleteHost("foo")
 
@@ -150,9 +150,22 @@ func Test_createHost_Good(t *testing.T) {
 	ms := setupMockService("nodata")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 
-	hosts, _ := ibc.createHost("foo", "1.2.3.4", []string{"node1", "node2"})
+	hosts, _ := ibc.createHost("foo", "1.2.3.4")
+
+	if hosts != 1 {
+		t.Fatalf("Expected: %+v, got %+v", "1 host", hosts)
+	}
+}
+
+func Test_createHostNextAvailable_Good(t *testing.T) {
+	ms := setupMockService("nodata")
+	defer ms.Close()
+
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
+
+	hosts, _ := ibc.createHostNextIP("foo")
 
 	if hosts != 1 {
 		t.Fatalf("Expected: %+v, got %+v", "1 host", hosts)
@@ -163,9 +176,9 @@ func Test_createHost_NoHosts(t *testing.T) {
 	ms := setupMockService("good")
 	defer ms.Close()
 
-	ibc := newInfobloxController(user, password, ms.URL)
+	ibc := newInfobloxController(user, password, ms.URL, "", "")
 
-	hosts, _ := ibc.createHost("foo", "1.2.3.4", []string{"node1", "node2"})
+	hosts, _ := ibc.createHost("foo", "1.2.3.4")
 
 	if hosts != 0 {
 		t.Fatalf("Expected: %+v, got %+v", "0 host", hosts)

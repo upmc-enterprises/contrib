@@ -28,8 +28,7 @@ import (
 )
 
 const (
-	dnsSubDomain = "enterprises.upmc.edu" // TODO: Refactor out to args
-	subnet       = "10.25.85.128/25"      //TODO: Refactor out to args
+	infoblox_nextIpFunction = "func:nextavailableip:"
 )
 
 // store infoblox api data and allow for actions against api
@@ -37,6 +36,8 @@ type infobloxController struct {
 	user         string
 	password     string
 	baseEndpoint string
+	dnsSubDomain string
+	subnet       string
 }
 
 type infoBloxHost struct {
@@ -45,7 +46,7 @@ type infoBloxHost struct {
 
 type infoBloxHostCreate struct {
 	Name string        `json:"name"`
-	Ips  []infoBloxIps `json:"ipv4addrs,array"`
+	Ips  []infoBloxIps `json:"ipv4addrs,ar1ray"`
 }
 
 type infoBloxIps struct {
@@ -53,11 +54,13 @@ type infoBloxIps struct {
 }
 
 // newInfobloxController creates a new infoBloxController from the given config
-func newInfobloxController(user, password, baseURL string) *infobloxController {
+func newInfobloxController(user, password, baseURL, dnsSubDomain, subnet string) *infobloxController {
 	ibc := infobloxController{
 		user:         user,
 		password:     password,
 		baseEndpoint: baseURL,
+		dnsSubDomain: dnsSubDomain,
+		subnet:       subnet,
 	}
 	return &ibc
 }
@@ -65,7 +68,7 @@ func newInfobloxController(user, password, baseURL string) *infobloxController {
 // get current dns entry
 func (infoblx *infobloxController) getHost(name string) (host []infoBloxHost, err error) {
 	client, req := getHTTPClientRequest(infoblx.password,
-		fmt.Sprintf("%s/record:host?name~=%s.%s", infoblx.baseEndpoint, name, dnsSubDomain), "GET", nil)
+		fmt.Sprintf("%s/record:host?name~=%s.%s", infoblx.baseEndpoint, name, infoblx.dnsSubDomain), "GET", nil)
 	resp, err := client.Do(req)
 
 	if err != nil {
@@ -110,8 +113,14 @@ func (infoblx *infobloxController) deleteHost(name string) (int, error) {
 	return len(hosts), nil
 }
 
+// create dns entry by getting next available ip
+func (infoblx *infobloxController) createHostNextIP(name string) (int, error) {
+	records, err := infoblx.createHost(name, fmt.Sprintf("%s%s", infoblox_nextIpFunction, infoblx.subnet))
+	return records, err
+}
+
 // create dns entry in infoblox using provided ip address
-func (infoblx *infobloxController) createHost(name, ip string, nodes []string) (int, error) {
+func (infoblx *infobloxController) createHost(name, ip string) (int, error) {
 	//first check if it already exists, if so, don't create again
 	hosts, _ := infoblx.getHost(name)
 
@@ -119,15 +128,12 @@ func (infoblx *infobloxController) createHost(name, ip string, nodes []string) (
 		return 0, nil
 	}
 
-	// get list of all nodes's ips
 	ips := []infoBloxIps{}
-	for _, ip := range nodes {
-		ips = append(ips, infoBloxIps{Address: ip})
-	}
+	ips = append(ips, infoBloxIps{Address: ip})
 
 	// create the object to post in body
 	bodyObj := infoBloxHostCreate{
-		Name: fmt.Sprintf("%s.%s", name, dnsSubDomain),
+		Name: fmt.Sprintf("%s.%s", name, infoblx.dnsSubDomain),
 		Ips:  ips,
 	}
 

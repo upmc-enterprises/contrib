@@ -144,6 +144,10 @@ var (
 	infobloxAPIBaseURL = flags.String("infoblox-api-base-url", "", `base url to access infoblox api`)
 
 	lbType = flags.String("lb-type", "", `configures which load balancer type to use`)
+
+	dnsSubDomain = flags.String("dns-sub-domain", "", `configures what dns sub-domain to use when provisioning entries in Infoblox`)
+
+	subnet = flags.String("subnet", "", `configures what to search for free ip's when integrating with infoblox`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -766,12 +770,23 @@ func main() {
 	}
 
 	// setup infoblox
-	//ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL)
-	nodes, _ := getNodes(kubeClient)
-	fmt.Println("found nodes: ", nodes)
-	//ibc.createHost("stevesloka", "1.2.3.4", nodes)
-	//host, _ := ibc.getHost("hedis-ci")
-	//fmt.Println("hosts found: ", host)
+	ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL, *dnsSubDomain, *subnet)
+	//nodes, _ := getNodes(kubeClient)
+	//fmt.Println("found nodes: ", nodes)
+
+	//records, err := ibc.createHostNextIP("stevesloka")
+
+	// if err != nil {
+	// 	fmt.Println("error creating host: ", err)
+	// }
+	//
+	// fmt.Println("Records created: ", records)
+
+	// host, _ := ibc.getHost("stevesloka")
+	// fmt.Println("hosts found: ", host)
+
+	host, _ := ibc.deleteHost("stevesloka")
+	fmt.Println("hosts found: ", host)
 
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
