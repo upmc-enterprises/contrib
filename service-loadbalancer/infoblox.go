@@ -29,6 +29,7 @@ import (
 
 const (
 	dnsSubDomain = "enterprises.upmc.edu" // TODO: Refactor out to args
+	subnet       = "10.25.85.128/25"      //TODO: Refactor out to args
 )
 
 // store infoblox api data and allow for actions against api
@@ -109,12 +110,10 @@ func (infoblx *infobloxController) deleteHost(name string) (int, error) {
 	return len(hosts), nil
 }
 
-// create dns entry in infoblox
+// create dns entry in infoblox using provided ip address
 func (infoblx *infobloxController) createHost(name, ip string, nodes []string) (int, error) {
 	//first check if it already exists, if so, don't create again
 	hosts, _ := infoblx.getHost(name)
-
-	fmt.Println("got hosts: ", hosts)
 
 	if len(hosts) > 0 {
 		return 0, nil
@@ -128,7 +127,7 @@ func (infoblx *infobloxController) createHost(name, ip string, nodes []string) (
 
 	// create the object to post in body
 	bodyObj := infoBloxHostCreate{
-		Name: fmt.Sprintf("%s.enterprises.upmc.edu", name),
+		Name: fmt.Sprintf("%s.%s", name, dnsSubDomain),
 		Ips:  ips,
 	}
 
