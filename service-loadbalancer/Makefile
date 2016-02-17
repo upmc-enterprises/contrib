@@ -6,7 +6,7 @@ PREFIX = gcr.io/google_containers/servicelb
 HAPROXY_IMAGE = contrib-haproxy
 
 server: service_loadbalancer.go
-	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go ./infoblox.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go ./infoblox.go ./f5.go
 
 container: server haproxy
 	docker build -t $(PREFIX):$(TAG) .
@@ -28,5 +28,5 @@ clean:
 	docker rmi -f $(HAPROXY_IMAGE):$(TAG) || true
 	docker rmi -f $(PREFIX):$(TAG) || true
 
-test: 
+test:
 	godep go test -v --vmodule=*=4

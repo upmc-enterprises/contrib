@@ -148,6 +148,16 @@ var (
 	dnsSubDomain = flags.String("dns-sub-domain", "", `configures what dns sub-domain to use when provisioning entries in Infoblox`)
 
 	subnet = flags.String("subnet", "", `configures what to search for free ip's when integrating with infoblox`)
+
+	f5Hostname = flags.String("f5-hostname", "", `configures url to f5`)
+
+	f5Username = flags.String("f5-username", "", `configures user to access f5`)
+
+	f5Password = flags.String("f5-password", "", `configures password to access f5`)
+
+	f5Insecure = flags.Bool("f5-insecure", true, `ignore certs when connecting to f5`)
+
+	f5PatitionPath = flags.String("f5-partition", "", `configures partition to use with f5`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -770,7 +780,7 @@ func main() {
 	}
 
 	// setup infoblox
-	ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL, *dnsSubDomain, *subnet)
+	//ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL, *dnsSubDomain, *subnet)
 	//nodes, _ := getNodes(kubeClient)
 	//fmt.Println("found nodes: ", nodes)
 
@@ -785,8 +795,18 @@ func main() {
 	// host, _ := ibc.getHost("stevesloka")
 	// fmt.Println("hosts found: ", host)
 
-	host, _ := ibc.deleteHost("stevesloka")
-	fmt.Println("hosts found: ", host)
+	// host, _ := ibc.deleteHost("test")
+	// fmt.Println("hosts found: ", host)
+
+	//-=-=-=-=-=-=-=-=-=-
+
+	f5Ctl := newF5Controller(*f5Hostname, *f5Username, *f5Password, *f5PatitionPath, *f5Insecure)
+
+	fmt.Println("About to chat with f5........")
+
+	result := f5Ctl.checkPoolExists("tdc")
+
+	fmt.Println("result: ", result)
 
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
