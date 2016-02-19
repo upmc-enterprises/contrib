@@ -39,7 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util"
+	util "k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
@@ -239,6 +239,10 @@ type staticPageHandler struct {
 }
 
 type serviceAnnotations map[string]string
+
+type ExternalLoadBalancer interface {
+	createService() error
+}
 
 func (s serviceAnnotations) getAlgorithm() (string, bool) {
 	val, ok := s[lbAlgorithmKey]
@@ -804,7 +808,7 @@ func main() {
 
 	fmt.Println("About to chat with f5........")
 
-	result := f5Ctl.checkPoolExists("tdc")
+	result := f5Ctl.createService()
 
 	fmt.Println("result: ", result)
 

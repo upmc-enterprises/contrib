@@ -16,46 +16,46 @@ limitations under the License.
 
 package main
 
-import (
-	"github.com/golang/glog"
-	f5 "github.com/openshift/origin/plugins/router/f5"
-)
+// F5Config holds configuration for the f5 plugin.
+type F5Config struct {
+	// Host specifies the hostname or IP address of the F5 BIG-IP host.
+	Host string
 
-// const (
-// 	host          = "https://ftrf5devintltm01.isd.upmc.edu"
-// 	username      = "slokas_adm"
-// 	password      = "foo"
-// 	insecure      = true
-// 	partitionPath = "tdc"
-// )
+	// Username specifies the username with the plugin should authenticate
+	// with the F5 BIG-IP host.
+	Username string
+
+	// Password specifies the password with which the plugin should
+	// authenticate with F5 BIG-IP.
+	Password string
+
+	// Insecure specifies whether the F5 plugin should perform strict certificate
+	// validation for connections to the F5 BIG-IP host.
+	Insecure bool
+
+	// PartitionPath specifies the F5 partition path to use. This is used
+	// to create an access control boundary for users and applications.
+	PartitionPath string
+}
 
 type f5Controller struct {
-	F5Client *f5.F5Plugin
+	Config F5Config
 }
 
-func newF5Controller(host, username, password, partitionPath string, insecure bool) *f5Controller {
-	config := f5.F5PluginConfig{
-		Host:          host,
-		Username:      username,
-		Password:      password,
-		Insecure:      insecure,
-		PartitionPath: partitionPath,
-	}
-	client, err := f5.NewF5Plugin(config)
-
-	if err != nil {
-		glog.Fatalf("Could not init f5Controller: %v", err)
+func newF5Controller(host, user, password, partition string, insecure bool) *f5Controller {
+	ctrl := f5Controller{
+		Config: F5Config{
+			Host:          host,
+			Username:      user,
+			Password:      password,
+			Insecure:      insecure,
+			PartitionPath: partition,
+		},
 	}
 
-	controller := f5Controller{
-		F5Client: client,
-	}
-
-	client.ensurePoolExists("foo")
-
-	return &controller
+	return &ctrl
 }
 
-// func (f5ctl *f5Controller) checkPoolExists(pool string) error {
-// 	return f5ctl.F5Client.ensurePoolExists(pool)
-// }
+func (ctrl *f5Controller) createService() error {
+	return nil
+}
